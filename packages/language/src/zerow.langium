@@ -1,7 +1,26 @@
 grammar Zerow
 
 entry Program:
-    TODO = 'Declare' 'your' 'grammar';
+    statements+=Statement*;
+
+Statement:
+    DeclarationStmt | AssignmentStmt;
+
+DeclarationStmt:
+    'let' name=ID '=' expr=Expression ';';
+
+AssignmentStmt:
+    variable=[DeclarationStmt:ID] '=' expr=Expression ';';
+
+Expression:
+    Literal | Reference;
+
+Literal:
+    value=INT;
+
+Reference:
+    variable=[DeclarationStmt:ID];
+
 
 hidden terminal WS: /\s+/;
 terminal ID: /[_a-zA-Z][\w_]*/;
