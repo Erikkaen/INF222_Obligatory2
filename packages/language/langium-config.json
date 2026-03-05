@@ -1,0 +1,16 @@
+{
+    "projectName": "Zerow",
+    "languages": [
+        {
+            "id": "zerow",
+            "grammar": "src/zerow.langium",
+            "fileExtensions": [
+                "zw"
+            ],
+            "textMate": {
+                "out": "syntaxes/zerow.tmLanguage.json"
+            }
+        }
+    ],
+    "out": "src/generated"
+}

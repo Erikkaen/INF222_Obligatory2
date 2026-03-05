@@ -1,0 +1,49 @@
+{
+    "name": "vscode-zerow",
+    "description": "The extension specific package",
+    "version": "0.0.1",
+    "displayName": "zerow",
+    "type": "module",
+    "engines": {
+        "vscode": "^1.67.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "zerow",
+            "aliases": ["Zerow", "zerow"],
+            "extensions": [".zw"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "zerow",
+            "scopeName": "source.zerow",
+            "path": "syntaxes/zerow.tmLanguage.json"
+        }]
+    },
+    "activationEvents": [
+        "onLanguage:zerow"
+    ],
+    "main": "./out/extension/main.cjs",
+    "scripts": {
+        "vscode:prepublish": "npm run build",
+        "build:prepare": "shx mkdir -p ./syntaxes/ && shx cp -f ../language/syntaxes/zerow.tmLanguage.json ./syntaxes/zerow.tmLanguage.json",
+        "build": "npm run build:prepare && tsc -b tsconfig.json && node esbuild.mjs",
+        "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
+    },
+    "dependencies": {
+        "zerow-language": "0.0.1",
+        "vscode-languageclient": "~9.0.1",
+        "vscode-languageserver": "~9.0.1"
+    },
+    "devDependencies": {
+        "@types/vscode": "~1.67.0",
+        "concurrently": "~8.2.1",
+        "esbuild": "~0.25.5"
+    },
+    "vsce": {
+      "dependencies": false
+    }
+}
