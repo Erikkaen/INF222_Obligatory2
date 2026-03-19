@@ -148,8 +148,21 @@ export class ZerowValidator {
             }
         }
 
-        function validateLiteral(_literal: Literal) {
-            // nothing to validate??
+        function validateLiteral(literal: Literal) {
+            const unitRef = literal.unit?.ref;
+
+            if (!literal.unit) {
+                accept('error',
+                    `Missing unit for literal.`,
+                    { node: literal, property: 'unit' });
+                return;
+            }
+
+            if (!unitRef) {
+                accept('error',
+                    `Unit '${literal.unit.$refText}' is not declared.`,
+                    { node: literal, property: 'unit' });
+            }
         }
 
         function validateReference(ref: Reference, index: number) {
