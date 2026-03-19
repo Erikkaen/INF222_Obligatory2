@@ -1,19 +1,20 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { Program, ZerowAstType } from './generated/ast.js';
+import type {
+    Program,
+    ZerowAstType,
+    Statement,
+    DeclarationStmt,
+    AssignmentStmt,
+    Expression,
+    AddExpr,
+    MultExpr,
+    Literal,
+    Reference
+} from './generated/ast.js';
 import type { ZerowServices } from './zerow-module.js';
 
-import {
-    isDeclarationStmt,
-    isAssignmentStmt,
-    isReference,
-    isLiteral,
-    type DeclarationStmt,
-    type AssignmentStmt,
-    type Expression,
-    type Reference,
-    type Literal,
-    type Statement
-} from './generated/ast.js';
+
+
 /**
  * Register custom validation checks.
  */
@@ -37,149 +38,166 @@ export class ZerowValidator {
 
     validateProgram(model: Program, accept: ValidationAcceptor) {
 
-        const declared = new Map<string, DeclarationStmt>();
+        const unitSet = buildMeasureSet(model.units);
+        const symbolTable = new Map<string, string>();
 
-        function buildMeasureSet(expr: Expression, units: Set<string>) {
-            if (isLiteral(expr)) {
-                const unit = (expr as any).unit?.ref?.name;
-                if (unit) units.add(unit);
-                return;
-            }
+        for (const stmt of model.statements) {
+            validateStatement(stmt);
+        }
 
-            if (isReference(expr)) {
-                const decl = (expr as any).variable?.ref;
-                if (decl) buildMeasureSet(decl.value, units);
-                return;
-            }
+        function buildMeasureSet(units: Program['units']) {
+            const set = new Set<string>();
 
-            if ((expr as any).literal) {
-                buildMeasureSet((expr as any).literal, units);
-            }
-
-            if ((expr as any).expression) {
-                buildMeasureSet((expr as any).expression, units);
-            }
-
-            if ((expr as any).left) {
-                buildMeasureSet((expr as any).left, units);
-            }
-
-            if ((expr as any).right) {
-                for (const r of (expr as any).right) {
-                    buildMeasureSet(r, units);
+            for (const unit of units) {
+                if (set.has(unit.name)) {
+                    accept('error', `Duplicate unit '${unit.name}'`, { node: unit });
                 }
+                set.add(unit.name);
             }
+
+            return set;
         }
 
         function validateStatement(stmt: Statement) {
-            if (isDeclarationStmt(stmt)) {
+            if (stmt.$type === 'DeclarationStmt') {
                 validateDeclarationStmt(stmt);
-            } else if (isAssignmentStmt(stmt)) {
+            } else if (stmt.$type === 'AssignmentStmt') {
                 validateAssignmentStmt(stmt);
-            } else {
-                validateExpression((stmt as any).value);
+            } else if (stmt.$type === 'ReturnStmt') {
+                validateExpression(stmt.value);
             }
         }
 
         function validateDeclarationStmt(stmt: DeclarationStmt) {
-            if (declared.has(stmt.name)) {
-                accept('error',
-                    `Variable '${stmt.name}' has already been declared.`,
-                    {node: stmt, property: 'name'});
-            } else {
-                declared.set(stmt.name, stmt);
+            if (symbolTable.has(stmt.name)) {
+                accept('error', `Variable '${stmt.name}' already declared`, { node: stmt });
+                return;
             }
 
-            validateExpression(stmt.value);
+            const unit = validateExpression(stmt.value);
+            if (unit) {
+                symbolTable.set(stmt.name, unit);
+            }
         }
 
         function validateAssignmentStmt(stmt: AssignmentStmt) {
-            const decl = stmt.variable?.ref;
+            const variable = stmt.variable.ref;
 
-            if (!decl) return;
-
-            if (!declared.has(decl.name)) {
-                accept('error',
-                    `Variable '${decl.name}' is assigned before its declaration.`,
-                    {node: stmt, property: 'variable'});
+            if (!variable) {
+                accept('error', `Unresolved variable`, { node: stmt });
+                return;
             }
 
-            validateExpression(stmt.value);
+            const name = variable.name;
+
+            if (!symbolTable.has(name)) {
+                accept('error', `Variable '${name}' not declared`, { node: stmt });
+                return;
+            }
+
+            const expectedUnit = symbolTable.get(name);
+            const actualUnit = validateExpression(stmt.value);
+
+            if (expectedUnit && actualUnit && expectedUnit !== actualUnit) {
+                accept(
+                    'error',
+                    `Unit mismatch: cannot assign '${actualUnit}' to '${expectedUnit}'`,
+                    { node: stmt }
+                );
+            }
         }
 
-        function validateExpression(expr: Expression) {
+        function validateExpression(expr: Expression): string | undefined {
+            return validateAddExpr(expr as AddExpr);
+        }
 
-            const units = new Set<string>();
-            buildMeasureSet(expr, units);
+        function validateAddExpr(expr: AddExpr): string | undefined {
+            let currentUnit = validateMultExpr(expr.left);
 
-            if (units.size > 1) {
-                accept('error',
-                    `Unit mismatch.`,
-                    {node: expr});
-            }
+            for (let i = 0; i < expr.right.length; i++) {
+                const rightUnit = validateMultExpr(expr.right[i]);
 
-            if (isLiteral(expr)) {
-                validateLiteral(expr);
-                return;
-            }
-
-            if (isReference(expr)) {
-                validateReference(expr);
-                return;
-            }
-
-            if ((expr as any).left) {
-                validateExpression((expr as any).left);
-            }
-
-            if ((expr as any).right) {
-                for (const r of (expr as any).right) {
-                    validateExpression(r);
+                if (currentUnit && rightUnit && currentUnit !== rightUnit) {
+                    accept(
+                        'error',
+                        `Unit mismatch in '${expr.operator[i]}' operation: '${currentUnit}' vs '${rightUnit}'`,
+                        { node: expr }
+                    );
                 }
             }
 
-            if ((expr as any).expression) {
-                validateExpression((expr as any).expression);
-            }
-
-            if ((expr as any).literal) {
-                validateExpression((expr as any).literal);
-            }
+            return currentUnit;
         }
 
-        function validateLiteral(literal: Literal) {
-            if (!literal.unit) {
-                accept('error',
-                    `Missing unit.`,
-                    {node: literal, property: 'unit'});
-                return;
+        function validateMultExpr(expr: MultExpr): string | undefined {
+            let currentUnit = validatePrim(expr.left);
+
+            for (let i = 0; i < expr.right.length; i++) {
+                const rightUnit = validatePrim(expr.right[i]);
+
+                if (currentUnit && rightUnit && currentUnit !== rightUnit) {
+                    accept(
+                        'error',
+                        `Unit mismatch in '${expr.operator[i]}' operation: '${currentUnit}' vs '${rightUnit}'`,
+                        { node: expr }
+                    );
+                }
             }
 
-            if (!literal.unit.ref) {
-                accept('error',
-                    `Undeclared unit.`,
-                    {node: literal, property: 'unit'});
-            }
+            return currentUnit;
         }
 
-        function validateReference(ref: Reference) {
+        function validatePrim(expr: any): string | undefined {
+            if (expr.$type === 'Literal') {
+                return validateLiteral(expr);
+            }
+            if (expr.$type === 'Reference') {
+                return validateReference(expr);
+            }
+            if (expr.$type === 'GroupExpr') {
+                return validateExpression(expr.expression);
+            }
+            if (expr.$type === 'NegativeLiteral') {
+                return validateLiteral(expr.literal);
+            }
+            return undefined;
+        }
+
+        function validateLiteral(lit: Literal): string | undefined {
+            const unit = lit.unit.ref;
+
+            if (!unit) {
+                accept('error', `Unknown unit`, { node: lit });
+                return undefined;
+            }
+
+            if (!unitSet.has(unit.name)) {
+                accept('error', `Unit '${unit.name}' is not declared`, { node: lit });
+            }
+
+            return unit.name;
+        }
+
+        function validateReference(ref: Reference): string | undefined {
             const decl = resolveReference(ref);
 
-            if (!decl) return;
-
-            if (!declared.has(decl.name)) {
-                accept('error',
-                    `Variable '${decl.name}' is referenced before its declaration.`,
-                    { node: ref, property: 'variable' });
+            if (!decl) {
+                accept('error', `Unresolved reference`, { node: ref });
+                return undefined;
             }
+
+            const name = decl.name;
+
+            if (!symbolTable.has(name)) {
+                accept('error', `Variable '${name}' used before declaration`, { node: ref });
+                return undefined;
+            }
+
+            return symbolTable.get(name);
         }
 
-        function resolveReference(ref: Reference): DeclarationStmt | undefined {
-            return ref.variable?.ref;
+        function resolveReference(ref: Reference) {
+            return ref.variable.ref;
         }
-
-        model.statements.forEach(validateStatement);
     }
-
-
 }
