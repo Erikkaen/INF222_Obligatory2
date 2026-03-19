@@ -1,22 +1,47 @@
 grammar Zerow
 
 entry Program:
+    units+=UnitDeclaration*
     statements+=Statement*;
 
+UnitDeclaration:
+    'unit' name=ID;
+
 Statement:
-    DeclarationStmt | AssignmentStmt;
+    DeclarationStmt | AssignmentStmt | ReturnStmt;
+
+ReturnStmt:
+    'returns' value=Expression;
 
 DeclarationStmt:
-    'let' name=ID '=' expr=Expression ';';
+    'let' name=ID '=' value=Expression;
 
 AssignmentStmt:
-    variable=[DeclarationStmt:ID] '=' expr=Expression ';';
+    variable=[DeclarationStmt:ID] '=' value=Expression;
 
 Expression:
-    Literal | Reference;
+    AddExpr;
+
+AddExpr:
+    left=MultExpr (operator+=('add'|'sub') right+=MultExpr)*;
+
+MultExpr:
+    left=PrimExpr (operator+=('mul'|'div') right+=PrimExpr);
+
+PrimExpr:
+    Literal
+    | NegativeLiteral
+    | GroupExpr
+    | Reference;
 
 Literal:
-    value=INT;
+    value=INT '[' unit=[UnitDeclaration] ']';
+
+NegativeLiteral:
+    'negative' literal=Literal;
+
+GroupExpr:
+    '(' expression=Expression ')';
 
 Reference:
     variable=[DeclarationStmt:ID];
