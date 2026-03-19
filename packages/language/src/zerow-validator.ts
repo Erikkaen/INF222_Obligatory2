@@ -41,26 +41,38 @@ export class ZerowValidator {
 
         const declared = new Map<string, DeclarationStmt>();
 
-        function buildMeasureSet(expr: Expression): string | undefined {
+        function buildMeasureSet(expr: Expression, units: Set<string>): void {
             if (isLiteral(expr)) {
-                return (expr as any).unit?.ref?.name;
+                const unit = (expr as any).unit?.ref?.name;
+                if (unit) units.add(unit);
+                return;
             }
+
             if (isReference(expr)) {
                 const decl = (expr as any).variable?.ref;
-                if (!decl) return undefined;
-                return buildMeasureSet(decl.value);
+                if (decl) buildMeasureSet(decl.value, units);
+                return;
             }
+
             if ((expr as any).literal) {
-                return buildMeasureSet((expr as any).literal);
+                buildMeasureSet((expr as any).literal, units);
             }
+
             if ((expr as any).expression) {
-                return buildMeasureSet((expr as any).expression);
+                buildMeasureSet((expr as any).expression, units);
             }
+
             if ((expr as any).left) {
-                return buildMeasureSet((expr as any).left);
+                buildMeasureSet((expr as any).left, units);
             }
-            return undefined;
+
+            if ((expr as any).right) {
+                for (const r of (expr as any).right) {
+                    buildMeasureSet(r, units);
+                }
+            }
         }
+
 
         function validateStatement(stmt: Statement, index: number) {
             if (isDeclarationStmt(stmt)) {
@@ -97,20 +109,14 @@ export class ZerowValidator {
         }
 
         function validateExpression(expr: Expression, index: number) {
-
             // binary expression check
-            if ((expr as any).left && (expr as any).right) {
-                const leftUnit = buildMeasureSet((expr as any).left);
+            const units = new Set<string>();
+            buildMeasureSet(expr, units);
 
-                for (const rightExpr of (expr as any).right) {
-                    const rightUnit = buildMeasureSet(rightExpr);
-
-                    if (leftUnit && rightUnit && leftUnit !== rightUnit) {
-                        accept('error',
-                            `Unit mismatch: '${leftUnit}' vs '${rightUnit}'.`,
-                            { node: expr });
-                    }
-                }
+            if (units.size > 1) {
+                accept('error',
+                    `Unit mismatch: ${Array.from(units).join(' vs ')}.`,
+                    { node: expr });
             }
 
             if (isLiteral(expr)) {
