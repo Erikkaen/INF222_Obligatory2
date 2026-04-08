@@ -14,27 +14,28 @@
     "main": "./out/index.js",
     "module": "./out/index.js",
     "exports": {
-      ".": {
-        "types": "./out/index.d.ts",
-        "default": "./out/index.js"
-      }
+        ".": {
+            "types": "./out/index.d.ts",
+            "default": "./out/index.js"
+        }
     },
     "typesVersions": {
-      "*": {
-        ".": [
-          "out/index"
-        ]
-      }
+        "*": {
+            ".": [
+                "out/index"
+            ]
+        }
     },
     "scripts": {
         "build": "echo 'No build step'",
         "langium:generate": "langium generate",
-        "langium:watch": "langium generate --watch"
+        "langium:watch": "langium generate --watch",
+        "test": "npm run --workspace packages/cli test"
     },
     "dependencies": {
         "langium": "~4.2.0"
     },
     "devDependencies": {
-        "langium-cli": "~4.2.0"
+        "langium-cli": "^4.2.0"
     }
 }

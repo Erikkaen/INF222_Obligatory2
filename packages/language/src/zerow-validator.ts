@@ -36,6 +36,7 @@ export class ZerowValidator {
 
      validateProgram(model: Program, accept: ValidationAcceptor) {
          const declaredVariables = new Map<string, DeclarationStmt>();
+         const variableUnits = new Map<string, string | undefined>();
 
          function buildMeasureSet(expr: Expression | undefined): string | undefined {
              if (!expr) {
@@ -52,40 +53,48 @@ export class ZerowValidator {
              }
          }
 
-         function validateDeclarationStmt(stmt: DeclarationStmt) {
+         function validateDeclarationStmt(stmt: DeclarationStmt): void {
              if (declaredVariables.has(stmt.name)) {
                  accept('error', `Variable '${stmt.name}' has already been declared.`, {
                      node: stmt,
                      property: 'name'
                  });
-             } else {
-                 declaredVariables.set(stmt.name, stmt);
+                 return;
              }
+             declaredVariables.set(stmt.name, stmt);
 
-             validateExpression(stmt.value);
+             const unit = validateExpression(stmt.value);
+             variableUnits.set(stmt.name, unit);
          }
 
          function validateAssignmentStmt(stmt: AssignmentStmt) {
              const variable = stmt.variable.ref;
 
-            //No duplicates here
              if (variable && !declaredVariables.has(variable.name)) {
                  accept('error', `Variable '${variable.name}' is assigned before it is declared.`, {
                      node: stmt,
                      property: 'variable'
                  });
+                 return;
              }
 
-             validateExpression(stmt.value);
+             const assignedUnit = validateExpression(stmt.value);
+
+             // Assignments are allowed to change the variable's unit - one of my problems on the tests
+             if (variable && assignedUnit !== undefined) {
+                 variableUnits.set(variable.name, assignedUnit);
+             }
          }
 
          function validateExpression(expr: Expression): string | undefined {
              const addExpr = expr as AddExpr;
 
              if (addExpr.left !== undefined && addExpr.right !== undefined) {
-                 let leftUnit = resolveReference(addExpr.left);
+                 const leftUnit = resolveReference(addExpr.left);
 
-                 const rights = Array.isArray(addExpr.right) ? addExpr.right : [addExpr.right];
+                 const rights = Array.isArray(addExpr.right)
+                     ? addExpr.right
+                     : [addExpr.right];
 
                  for (const right of rights) {
                      const rightUnit = resolveReference(right);
@@ -95,26 +104,33 @@ export class ZerowValidator {
                          rightUnit !== undefined &&
                          leftUnit !== rightUnit
                      ) {
-                         accept('error', `Type mismatch: '${leftUnit}' is not compatible with '${rightUnit}'.`, {
-                             node: expr
-                         });
+                         accept('error',
+                             `Type mismatch: '${leftUnit}' is not compatible with '${rightUnit}'.`,
+                             { node: expr as any }
+                         );
                      }
-
-                     leftUnit = rightUnit;
                  }
+
+                 return leftUnit;
              }
 
              return resolveReference(expr);
          }
 
          function validateLiteral(literal: Literal): string | undefined {
-             return literal.unit.ref?.name;
+             if (!literal.unit || !literal.unit.ref) {
+                 accept('error', 'Missing unit.', {
+                     node: literal as any
+                 });
+                 return undefined;
+             }
+
+             return literal.unit.ref.name;
          }
 
          function validateReference(ref: Reference): string | undefined {
              const variable = ref.variable.ref;
 
-             // Unresolved variable here, return undefined
              if (!variable) {
                  return undefined;
              }
@@ -124,9 +140,10 @@ export class ZerowValidator {
                      node: ref,
                      property: 'variable'
                  });
+                 return undefined;
              }
 
-             return resolveReference(variable.value);
+             return variableUnits.get(variable.name);
          }
 
 
@@ -149,9 +166,13 @@ export class ZerowValidator {
                      return resolveReference(expr.expression);
 
                  case 'MultExpr': {
-                     let leftUnit = resolveReference(expr.left);
+                     const leftUnit = resolveReference(expr.left);
 
-                     for (const right of expr.right) {
+                     const rights = Array.isArray(expr.right)
+                         ? expr.right
+                         : [expr.right];
+
+                     for (const right of rights) {
                          const rightUnit = resolveReference(right);
 
                          if (
@@ -159,21 +180,24 @@ export class ZerowValidator {
                              rightUnit !== undefined &&
                              leftUnit !== rightUnit
                          ) {
-                             accept('error', `Type mismatch: '${leftUnit}' is not compatible with '${rightUnit}'.`, {
-                                 node: expr
-                             });
+                             accept('error',
+                                 `Type mismatch: '${leftUnit}' is not compatible with '${rightUnit}'.`,
+                                 { node: expr as any }
+                             );
                          }
-
-                         leftUnit = rightUnit;
                      }
 
                      return leftUnit;
                  }
 
                  case 'AddExpr': {
-                     let leftUnit = resolveReference(expr.left);
+                     const leftUnit = resolveReference(expr.left);
 
-                     for (const right of expr.right) {
+                     const rights = Array.isArray(expr.right)
+                         ? expr.right
+                         : [expr.right];
+
+                     for (const right of rights) {
                          const rightUnit = resolveReference(right);
 
                          if (
@@ -181,11 +205,11 @@ export class ZerowValidator {
                              rightUnit !== undefined &&
                              leftUnit !== rightUnit
                          ) {
-                             accept('error', `Type mismatch: '${leftUnit}' is not compatible with '${rightUnit}'.`, {
-                                 node: expr
-                             });
+                             accept('error',
+                                 `Type mismatch: '${leftUnit}' is not compatible with '${rightUnit}'.`,
+                                 { node: expr as any }
+                             );
                          }
-                         leftUnit = rightUnit;
                      }
 
                      return leftUnit;
