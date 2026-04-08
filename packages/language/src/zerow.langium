@@ -2,49 +2,50 @@ grammar Zerow
 
 entry Program:
     units+=UnitDeclaration*
-    statements+=Statement*;
+    body+=VarStmt*
+    returns+=ReturnStmt*;
 
 UnitDeclaration:
     'unit' name=ID;
 
-Statement:
-    DeclarationStmt | AssignmentStmt | ReturnStmt;
+VarStmt:
+    DeclarationStmt | AssignmentStmt;
+
+DeclarationStmt:
+    'declare' name=ID 'equals' value=Expression;
+
+AssignmentStmt:
+    'assign' value=Expression 'to' variable=[DeclarationStmt:ID];
 
 ReturnStmt:
     'returns' value=Expression;
 
-DeclarationStmt:
-    'let' name=ID '=' value=Expression;
-
-AssignmentStmt:
-    variable=[DeclarationStmt:ID] '=' value=Expression;
-
 Expression:
     AddExpr;
 
-AddExpr:
-    left=MultExpr (operator+=('add'|'sub') right+=MultExpr)*;
+AddExpr infers Expression:
+    MultExpr ({infer AddExpr.left=current} operator=('add' | 'sub') right=MultExpr)*;
 
-MultExpr:
-    left=PrimExpr (operator+=('mul'|'div') right+=PrimExpr);
+MultExpr infers Expression:
+    PrimaryExpr ({infer MultExpr.left=current} operator=('mul' | 'div') right=PrimaryExpr)*;
 
-PrimExpr:
-    Literal
+PrimaryExpr infers Expression:
+      Literal
     | NegativeLiteral
-    | GroupExpr
-    | Reference;
+    | Reference
+    | GroupExpr;
 
 Literal:
-    value=INT '[' unit=[UnitDeclaration] ']';
+    value=INT '[' unit=[UnitDeclaration:ID] ']';
 
 NegativeLiteral:
-    'negative' literal=Literal;
-
-GroupExpr:
-    '(' expression=Expression ')';
+    'neg' value=Literal;
 
 Reference:
     variable=[DeclarationStmt:ID];
+
+GroupExpr:
+    '(' expression=Expression ')';
 
 
 hidden terminal WS: /\s+/;
